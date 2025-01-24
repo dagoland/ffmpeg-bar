@@ -28,7 +28,7 @@ CHAR_EMPTY="░"
 RECORDING_DOT="●"
 recording_dot_visible=true
 
-# Função nova para calcular duração total de múltiplos inputs
+# Função atualizada para calcular duração total de múltiplos inputs
 calculate_total_duration() {
     local total_duration=0
     local is_input_next=false
@@ -36,20 +36,40 @@ calculate_total_duration() {
     local concat_file=""
     local args=("$@")
     local temp_inputs=$(mktemp)
+    local audio_duration=0
+    local is_loop_image=false
     
-    # Primeiro verifica se é uma operação de concat com arquivo de lista
+    # Primeiro verifica se há imagem com loop
     for ((i=0; i<${#args[@]}; i++)); do
-        if [ "${args[i]}" = "-f" ] && [ $((i + 1)) -lt ${#args[@]} ] && [ "${args[i+1]}" = "concat" ]; then
-            is_concat=true
-        fi
-        if [ "$is_concat" = true ] && [ "${args[i]}" = "-i" ] && [ $((i + 1)) -lt ${#args[@]} ]; then
-            concat_file="${args[i+1]}"
-            break
+        if [ "${args[i]}" = "-loop" ] && [ "${args[i+1]}" = "1" ]; then
+            is_loop_image=true
         fi
     done
     
+    # Se for imagem com loop, procura a duração do áudio
+    if [ "$is_loop_image" = true ]; then
+        for ((i=0; i<${#args[@]}; i++)); do
+            if [ "${args[i]}" = "-i" ] && [ $((i + 1)) -lt ${#args[@]} ]; then
+                local file="${args[i+1]}"
+                # Verifica se o arquivo é de áudio
+                if [[ "$file" =~ \.(mp3|wav|m4a|aac|ogg|flac)$ ]]; then
+                    # Usa ffprobe para obter duração do áudio
+                    audio_duration=$(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file" 2>/dev/null)
+                    audio_duration=${audio_duration%.*}
+                    break
+                fi
+            fi
+        done
+        
+        # Se encontrou duração de áudio, usa essa duração
+        if [ $audio_duration -gt 0 ]; then
+            echo "$audio_duration"
+            return 0
+        fi
+    fi
+    
+    # Resto do código original para concatenação e outros tipos de entrada
     if [ "$is_concat" = true ] && [ -n "$concat_file" ]; then
-        # Processamento para concat com arquivo de lista
         while IFS= read -r line; do
             if [[ $line =~ ^file.* ]]; then
                 local file_path=$(echo "$line" | sed -E "s/^file ['\"']?([^'\"']+)['\"']?$/\1/")
@@ -57,7 +77,6 @@ calculate_total_duration() {
             fi
         done < "$concat_file"
     else
-        # Para -filter_complex concat ou inputs diretos, coletamos todos os -i
         for ((i=0; i<${#args[@]}; i++)); do
             if [ "${args[i]}" = "-i" ] && [ $((i + 1)) -lt ${#args[@]} ]; then
                 echo -i "\"${args[i+1]}\"" >> "$temp_inputs"
@@ -274,6 +293,21 @@ for ((i=1; i<=$#; i++)); do
         fi
     fi
 done
+
+# Tratamento de duração
+if [ -z "$duration" ] || [ "$duration" -le 0 ]; then
+    # Se não conseguir determinar a duração, usa a opção -shortest
+    if [[ " $*" == *" -shortest"* ]]; then
+        duration=$(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -i "$(echo "$@" | grep -oP '(?<=-i )[^ ]+' | grep -E '\.(mp3|wav|m4a|mp4|avi|mov)$' | head -n1)" 2>/dev/null)
+        
+        # Verifica se a duração é um número válido
+        if [[ "$duration" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            duration=${duration%.*}
+        else
+            duration=0
+        fi
+    fi
+fi
 
 # Se não for gravação ao vivo, calcula a duração total
 if [ "$is_live_recording" = false ]; then
