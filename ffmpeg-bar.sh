@@ -185,11 +185,22 @@ format_output_file() {
 
 # Função atualizada para verificar se é apenas uma operação de informação
 is_info_operation() {
+    local args=("$@")
+    
+    # Se não houver argumentos além do arquivo de entrada, é uma operação de informação
+    if [ ${#args[@]} -eq 1 ]; then
+        return 0
+    fi
+    
+    # Se houver apenas -i seguido de um arquivo, é uma operação de informação
+    if [ ${#args[@]} -eq 2 ] && [ "${args[0]}" = "-i" ]; then
+        return 0
+    fi
+    
     local has_input=false
     local has_output=false
     local input_file=""
     local is_input_next=false
-    local args=("$@")
     
     for ((i=0; i<${#args[@]}; i++)); do
         if [ "$is_input_next" = true ]; then
@@ -204,7 +215,7 @@ is_info_operation() {
             continue
         fi
         
-        # Verifica se o argumento atual é uma opção de saída conhecida do ffmpeg
+        # Verifica se o argumento atual é uma opção de codificação
         if [[ "${args[i]}" =~ ^-(c|codec|f|format|map|b|q|quality|preset|crf|ab|vb|ar|ac|vf|af|s|r|aspect|vn|an|sn|y)$ ]]; then
             has_output=true
         fi
@@ -215,8 +226,8 @@ is_info_operation() {
         fi
     done
     
-    # É operação de informação se tem input mas não tem output nem opções de codificação
-    if [ "$has_input" = true ] && [ "$has_output" = false ]; then
+    # Se tem apenas input ou nenhuma opção de codificação/output, é operação de informação
+    if [ "$has_output" = false ]; then
         return 0
     else
         return 1
