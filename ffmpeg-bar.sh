@@ -296,7 +296,7 @@ for ((i=1; i<=$#; i++)); do
         if [ $next -le $# ]; then
             # Lista de formatos de captura ao vivo
             case "${!next}" in
-                alsa|pulse|avfoundation|dshow|gdigrab|decklink|x11grab|v4l2|vfwcap|lavfi|pipewire)
+                alsa|pulse|avfoundation|dshow|gdigrab|decklink|x11grab|v4l2|pipewire)
                     is_live_recording=true
                     break
                     ;;
